@@ -31,6 +31,24 @@ except ImportError:
 # =============================================================================
 # ALGORITMO PRINCIPAL: METODO DE INTERVALO MEDIO (BISECCION)
 # =============================================================================
+def metodo_tanteo(f, inicio, fin, incremento):
+    intervalos = []
+    x = inicio
+
+    while x < fin:
+        siguiente = min(x + incremento, fin)
+
+        fx = f(x)
+        fsiguiente = f(siguiente)
+
+        if fx == 0:
+            intervalos.append((x, x))
+        elif fx * fsiguiente < 0:
+            intervalos.append((x, siguiente))
+
+        x = siguiente
+
+    return intervalos
 
 def metodo_intervalo_medio(f, a, b, tol=1e-3, max_iter=100, var_name="x"):
     """
@@ -156,13 +174,42 @@ def ejercicio_1():
     print("Ecuacion del volumen del liquido: V = pi * h^2 * (3R - h) / 3")
     print("Buscamos la profundidad h en metros tal que f(h) = pi * h^2 * (3R - h) / 3 - 30 = 0\n")
 
-    print("Ingreso de parametros por teclado para el Metodo de Intervalo Medio:")
-    a = ingresar_float("  Ingrese el limite inferior a", 0.0)
-    b = ingresar_float("  Ingrese el limite superior b", 3.0)
-    tol = ingresar_float("  Ingrese la cota de error E", 0.001)
+    print("Ingreso de parametros para el Metodo de Tanteo:")
 
+    incremento = ingresar_float("  Ingrese el incremento", 0.5)
+
+    intervalos = metodo_tanteo(f_tanque, -10.0, 10.0, incremento)
+    print("Cantidad de intervalos encontrados:", len(intervalos))
+    print("\nIntervalos encontrados:")
+    for i, intervalo in enumerate(intervalos, start=1):
+     print(f"  Intervalo {i}: {intervalo}")
+
+    tol = ingresar_float("  Ingrese la cota de error E", 0.001)
+ 
+    if not intervalos:
+       print("No se encontraron intervalos con cambio de signo.")
+       return
+
+    print("\nSeleccione el intervalo que desea resolver:")
+
+    for i, (a, b) in enumerate(intervalos, start=1):
+     print(f"  {i}. [{a}, {b}]")
+
+    opcion = int(input("Ingrese el numero del intervalo: "))
+
+    if opcion < 1 or opcion > len(intervalos):
+     print("Opcion invalida.")
+     return
+
+    a, b = intervalos[opcion - 1]
+
+    print(f"\nResolviendo intervalo [{a}, {b}]")
+# Estimacion previa de la cantidad de iteraciones
+    k_estimado = max(1, math.floor(math.log2((b - a) / tol)) + 1)
+
+    print(f"Iteraciones estimadas antes de comenzar: {k_estimado}")
     raiz_h, iters, historial, t_ejec = metodo_intervalo_medio(
-        f_tanque, a, b, tol=tol, var_name="h"
+    f_tanque, a, b, tol=tol, var_name="h"
     )
 
     # Conclusiones
@@ -175,7 +222,8 @@ def ejercicio_1():
 
     # Grafico
     if HAS_MATPLOTLIB:
-        h_vals = np.linspace(0, 6, 400)
+        margen = max(abs(b - a), 0.5)
+        h_vals = np.linspace(a - margen, b + margen, 400)
         f_vals = [f_tanque(h) for h in h_vals]
 
         plt.figure(figsize=(9, 5))
@@ -296,7 +344,8 @@ def ejercicio_3():
     a = ingresar_float("  Ingrese el limite inferior a", 200.0)
     b = ingresar_float("  Ingrese el limite superior b", 220.0)
     tol = ingresar_float("  Ingrese la cota de error E", 0.0001)
-
+    k_estimado = max(1, math.floor(math.log2((b - a) / tol)) + 1)
+    print(f"Iteraciones estimadas antes de comenzar: {k_estimado}")
     raiz_x, iters, hist, t_ejec = metodo_intervalo_medio(
         f_publicidad, a, b, tol=tol, var_name="x"
     )
