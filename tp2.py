@@ -22,24 +22,64 @@ def ejercicio1(p, p_aproximado):
 
     print(f"Tiempo de ejecución: {fin - inicio} segundos")
 
-def ejercicio2(p):
-     
-      inicio=time.time()
-      aproximado=round(p,3)
-      print(f"el valor aproximado es {aproximado}")
-      errorAbsoluto(p,aproximado)
-      errorRelativo(p,aproximado)
-      fin=time.time()
-      print(f"Tiempo de ejecución: {fin-inicio} segundos")
-      
 
-#ejercicio2((2/9) * (9/7))
+
+
+def ejercicio2(a, b):
+
+    inicio = time.time()
+
+    # Normalización
+    exp_a = math.floor(math.log10(abs(a)))
+    exp_b = math.floor(math.log10(abs(b)))
+
+    mantisa_a = a / (10 ** exp_a)
+    mantisa_b = b / (10 ** exp_b)
+
+    print(f"\nf({a}) = {mantisa_a:.3f} x 10^{exp_a}")
+    print(f"f({b}) = {mantisa_b:.3f} x 10^{exp_b}")
+
+    # Igualamos exponentes
+    exponente = max(exp_a, exp_b)
+
+    mantisa_a = mantisa_a * 10 ** (exp_a - exponente)
+    mantisa_b = mantisa_b * 10 ** (exp_b - exponente)
+
+    # Redondeo a 3 dígitos
+    mantisa_a = float(f"{mantisa_a:.3g}")
+    mantisa_b = float(f"{mantisa_b:.3g}")
+
+    # Operación
+    resultado = mantisa_a + mantisa_b
+
+    # Redondeo del resultado
+    resultado = float(f"{resultado:.3g}")
+
+    aproximado = resultado * 10 ** exponente
+
+    # Valor exacto con 5 decimales
+    exacto = a + b
+
+    print(f"\nResultado aproximado: {aproximado}")
+    print(f"Valor exacto (5 dec): {exacto:.5f}")
+
+    errorAbsoluto(exacto, aproximado)
+    errorRelativo(exacto, aproximado)
+
+    fin = time.time()   
+
+    print(f"Tiempo de cálculo: {(fin - inicio) * 1000000:.2f} μs")
+
+
 
 def ejercicio3(p):
 
     inicio = time.time()
 
-    aproximado = math.trunc(p * 1000) / 1000
+    cantidad = 3 - int(math.floor(math.log10(abs(p)))) - 1
+    factor = 10 ** cantidad
+
+    aproximado = math.trunc(p * factor) / factor
 
     print(f"Valor exacto: {p}")
     print(f"Valor truncado: {aproximado}")
@@ -63,44 +103,63 @@ def redondear4(numero):
     return float(f"{numero:.4g}")
 
 
+def redondear4(numero):
+    return float(f"{numero:.4g}")
+
+
 def ejercicio4a():
 
     inicio = time.time()
+
     a = 1
     b = 62.10
     c = 1
 
-    b2 = redondear4(b ** 2)
+    print("\n========== EJERCICIO 4.a ==========")
+
+    print("\nVALORES NORMALIZADOS")
+    print(f"a = {a:.4e}")
+    print(f"b = {b:.4e}")
+    print(f"c = {c:.4e}")
+
+    # b²
+    b2 = redondear4(b * b)
+
+    # 4ac
     cuatro_ac = redondear4(4 * a * c)
 
+    # Discriminante
     discriminante = redondear4(b2 - cuatro_ac)
-    # raíz del discriminante
+
+    # Raíz del discriminante
     raiz = redondear4(math.sqrt(discriminante))
 
-    print("VALORES")
-    print(f"a = {a}")
-    print(f"b = {b}")
-    print(f"c = {c}")
+    print("\nb² =", b2)
+    print("4ac =", cuatro_ac)
+    print("Discriminante =", discriminante)
+    print("Raíz del discriminante =", raiz)
 
-    print(f"\nb^2 = {b2}")
-    print(f"4ac = {cuatro_ac}")
-    print(f"Discriminante = {discriminante}")
-    print(f"raiz del Discriminante = {raiz}")
-
+    # x1
     numerador1 = redondear4(-b + raiz)
-    denominador = redondear4(2 * a)
-    x1 = redondear4(numerador1 / denominador)
+    denominador1 = redondear4(2 * a)
+    x1 = redondear4(numerador1 / denominador1)
 
+    # x2
     numerador2 = redondear4(-b - raiz)
-    x2 = redondear4(numerador2 / denominador)
+    denominador2 = redondear4(2 * a)
+    x2 = redondear4(numerador2 / denominador2)
 
-    print(f"\nNumerador x1 = {numerador1}")
+    print("\n--- x1 ---")
+    print(f"Numerador = {numerador1}")
+    print(f"Denominador = {denominador1}")
     print(f"x1 aproximado = {x1}")
 
-    print(f"\nNumerador x2 = {numerador2}")
+    print("\n--- x2 ---")
+    print(f"Numerador = {numerador2}")
+    print(f"Denominador = {denominador2}")
     print(f"x2 aproximado = {x2}")
 
-    # Valores 
+    # Valores de referencia dados por la consigna
     x1_exacto = -0.01610723
     x2_exacto = -62.08390
 
@@ -118,7 +177,6 @@ def ejercicio4a():
 
 
 #ejercicio4a()
-
 def ejercicio4b():
 
     inicio = time.time()
@@ -127,42 +185,61 @@ def ejercicio4b():
     b = 62.10
     c = 1
 
-    b2 = redondear4(b ** 2)
+    print("\n========== EJERCICIO 4.b ==========")
+
+    print("\nVALORES NORMALIZADOS")
+    print(f"a = {a:.4e}")
+    print(f"b = {b:.4e}")
+    print(f"c = {c:.4e}")
+
+    # b²
+    b2 = redondear4(b * b)
+
+    # 4ac
     cuatro_ac = redondear4(4 * a * c)
+
+    # Discriminante
     discriminante = redondear4(b2 - cuatro_ac)
 
+    # Raíz del discriminante
     raiz = redondear4(math.sqrt(discriminante))
 
-    print("VALORES")
-    print(f"a = {a}")
-    print(f"b = {b}")
-    print(f"c = {c}")
+    print("\nb² =", b2)
+    print("4ac =", cuatro_ac)
+    print("Discriminante =", discriminante)
+    print("Raíz del discriminante =", raiz)
 
-    print(f"\nb^2 = {b2}")
-    print(f"4ac = {cuatro_ac}")
-    print(f"Discriminante = {discriminante}")
-    print(f"raiz del Discriminante = {raiz}")
+    # ------------------------------------------------
+    # x1 racionalizado
+    # x1 = -2c / (b + sqrt(b² - 4ac))
+    # ------------------------------------------------
 
     numerador_x1 = redondear4(-2 * c)
     denominador_x1 = redondear4(b + raiz)
+
     x1 = redondear4(numerador_x1 / denominador_x1)
 
-    
+    print("\n--- x1 RACIONALIZADO ---")
+    print(f"Numerador = {numerador_x1}")
+    print(f"Denominador = {denominador_x1}")
+    print(f"x1 aproximado = {x1}")
+
+    # ------------------------------------------------
+    # x2 racionalizado
+    # x2 = -2c / (b - sqrt(b² - 4ac))
+    # ------------------------------------------------
+
     numerador_x2 = redondear4(-2 * c)
     denominador_x2 = redondear4(b - raiz)
+
     x2 = redondear4(numerador_x2 / denominador_x2)
 
-    print("\n--- x1 RACIONALIZADO ---")
-    print(f"Numerador: {numerador_x1}")
-    print(f"Denominador: {denominador_x1}")
-    print(f"x1 aproximado: {x1}")
-
     print("\n--- x2 RACIONALIZADO ---")
-    print(f"Numerador: {numerador_x2}")
-    print(f"Denominador: {denominador_x2}")
-    print(f"x2 aproximado: {x2}")
+    print(f"Numerador = {numerador_x2}")
+    print(f"Denominador = {denominador_x2}")
+    print(f"x2 aproximado = {x2}")
 
-    # Valores de referencia
+    # Valores de referencia dados por la consigna
     x1_exacto = -0.01610723
     x2_exacto = -62.08390
 
@@ -179,6 +256,8 @@ def ejercicio4b():
     print(f"\nTiempo de ejecución: {fin - inicio} segundos")
 
 
+#ejercicio4b()
+
 def truncar3(numero):
     if numero == 0:
         return 0
@@ -192,14 +271,16 @@ def truncar3(numero):
 def redondear3(numero):
     return float(f"{numero:.3g}")
 
-
 def ejercicio5a():
 
     inicio = time.time()
 
     x = 4.71
 
-    # EXACTO 
+    # =========================
+    # VALOR EXACTO
+    # =========================
+
     x2_exacto = x ** 2
     x3_exacto = x ** 3
     seis_x2_exacto = 6 * x2_exacto
@@ -212,41 +293,62 @@ def ejercicio5a():
         - 0.149
     )
 
-    # TRES DIGITOS TRUNCADOS 
+    # =========================
+    # TRES DÍGITOS TRUNCADOS
+    # =========================
+
     x2_truncado = truncar3(x ** 2)
     x3_truncado = truncar3(x2_truncado * x)
     seis_x2_truncado = truncar3(6 * x2_truncado)
     tres_x_truncado = truncar3(3 * x)
 
-    resultado_truncado = (
-        x3_truncado
-        - seis_x2_truncado
-        + tres_x_truncado
-        - 0.149
-    )
+    # Operaciones de la expresión, truncando cada resultado
+    paso1_truncado = truncar3(x3_truncado - seis_x2_truncado)
+    paso2_truncado = truncar3(paso1_truncado + tres_x_truncado)
+    resultado_truncado = truncar3(paso2_truncado - 0.149)
 
-    # TRES DÍGITOS REDONDEADOS 
+    # =========================
+    # TRES DÍGITOS REDONDEADOS
+    # =========================
+
     x2_redondeado = redondear3(x ** 2)
     x3_redondeado = redondear3(x2_redondeado * x)
     seis_x2_redondeado = redondear3(6 * x2_redondeado)
     tres_x_redondeado = redondear3(3 * x)
 
-    resultado_redondeado = (
-        x3_redondeado
-        - seis_x2_redondeado
-        + tres_x_redondeado
-        - 0.149
-    )
+    # Operaciones de la expresión, redondeando cada resultado
+    paso1_redondeado = redondear3(x3_redondeado - seis_x2_redondeado)
+    paso2_redondeado = redondear3(paso1_redondeado + tres_x_redondeado)
+    resultado_redondeado = redondear3(paso2_redondeado - 0.149)
+
+    # =========================
+    # TABLA
+    # =========================
+
+    print("\n========== EJERCICIO 5.a ==========")
 
     print("\n              x       x²       x³      6x²      3x")
-    print("Exacto       ", x, x2_exacto, x3_exacto,
-          seis_x2_exacto, tres_x_exacto)
 
-    print("Truncado     ", x, x2_truncado, x3_truncado,
-            seis_x2_truncado,   tres_x_truncado)
+    print("Exacto      ",
+          x,
+          x2_exacto,
+          x3_exacto,
+          seis_x2_exacto,
+          tres_x_exacto)
 
-    print("Redondeado   ", x, x2_redondeado, x3_redondeado,
-            seis_x2_redondeado,   tres_x_redondeado)
+    print("Truncado    ",
+          x,
+          x2_truncado,
+          x3_truncado,
+          seis_x2_truncado,
+          tres_x_truncado)
+
+    print("Redondeado  ",
+          x,
+          x2_redondeado,
+          x3_redondeado,
+          seis_x2_redondeado,
+          tres_x_redondeado)
 
     print("\n--- RESULTADOS ---")
     print(f"Resultado exacto: {resultado_exacto}")
@@ -264,7 +366,6 @@ def ejercicio5a():
     fin = time.time()
 
     print(f"\nTiempo de ejecución: {fin - inicio} segundos")
-
 
 
 #ejercicio5a()
@@ -326,6 +427,5 @@ def ejercicio5b():
     fin = time.time()
 
     print(f"\nTiempo de ejecución: {fin - inicio} segundos")
-
 
 ejercicio5b()
