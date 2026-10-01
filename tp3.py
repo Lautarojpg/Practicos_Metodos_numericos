@@ -263,25 +263,40 @@ def ejercicio_2():
     print("Funcion de utilidad total: P(x) = 8x + 0.3x^2 - 0.0013x^3 - 372")
     print("Se requiere determinar los dos puntos de equilibrio donde P(x) = 0.\n")
 
-    print("--- PARTE A: PRIMER PUNTO DE EQUILIBRIO ---")
-    print("Ingreso de parametros por teclado para la Raiz 1:")
-    a1 = ingresar_float("  Ingrese el limite inferior a1", 24.0)
-    b1 = ingresar_float("  Ingrese el limite superior b1", 26.0)
+
+    print("--- BUSQUEDA DE LOS PUNTOS DE EQUILIBRIO ---")
+
+    print("Ingreso de parametros para el Metodo de Tanteo:")
+
+    incremento = ingresar_float("  Ingrese el incremento", 2.0)
+
+    intervalos = metodo_tanteo(f_utilidad, 0.0, 300.0, incremento)
+
+    print("Cantidad de intervalos encontrados:", len(intervalos))
+
+    for i, (a, b) in enumerate(intervalos, start=1):
+        print(f"  Intervalo {i}: [{a}, {b}]")
+
+    if len(intervalos) < 2:
+       print("No se encontraron los dos puntos de equilibrio.")
+       return
+
     tol1 = ingresar_float("  Ingrese la cota de error E", 0.001)
 
-    raiz1, iters1, hist1, t1 = metodo_intervalo_medio(
-        f_utilidad, a1, b1, tol=tol1, var_name="x1"
-    )
+    resultados = []
 
-    print("\n--- PARTE B: SEGUNDO PUNTO DE EQUILIBRIO ---")
-    print("Ingreso de parametros por teclado para la Raiz 2:")
-    a2 = ingresar_float("  Ingrese el limite inferior a2", 250.0)
-    b2 = ingresar_float("  Ingrese el limite superior b2", 252.0)
-    tol2 = ingresar_float("  Ingrese la cota de error E", 0.001)
+    for i, (a, b) in enumerate(intervalos[:2], start=1):
+      print(f"\n--- RESOLVIENDO PUNTO DE EQUILIBRIO {i} ---")
+      k_estimado = max(1, math.floor(math.log2((b - a) / tol1)) + 1)
+      print(f"Iteraciones estimadas antes de comenzar: {k_estimado}")
+      raiz, iters, historial, tiempo = metodo_intervalo_medio(
+        f_utilidad, a, b, tol=tol1, var_name=f"x{i}"
+      )
+      
+      resultados.append((raiz, iters, historial, tiempo))
 
-    raiz2, iters2, hist2, t2 = metodo_intervalo_medio(
-        f_utilidad, a2, b2, tol=tol2, var_name="x2"
-    )
+    raiz1, iters1, hist1, t1 = resultados[0]
+    raiz2, iters2, hist2, t2 = resultados[1]
 
     # Conclusiones
     print("--- CONCLUSIONES DEL EJERCICIO 2 ---")
@@ -340,12 +355,51 @@ def ejercicio_3():
     print("Se busca el numero de unidades x para tener una utilidad neta de R(x) = $1000 en un entorno de x = 200.")
     print("Ecuacion a resolver: f(x) = 5x - 200 * ln(400 / (500 - x)) - 1000 = 0\n")
 
-    print("Ingreso de parametros por teclado para el Metodo de Intervalo Medio:")
-    a = ingresar_float("  Ingrese el limite inferior a", 200.0)
-    b = ingresar_float("  Ingrese el limite superior b", 220.0)
+
+    print("Ingreso de parametros para el Metodo de Tanteo:")
+
+    incremento = ingresar_float("  Ingrese el incremento", 1.0)
+
+    if incremento <= 0:
+        print("El incremento debe ser mayor que cero.")
+        return
+
+    intervalos = metodo_tanteo(f_publicidad, 200.0, 220.0, incremento)
+
+    print("Cantidad de intervalos encontrados:", len(intervalos))
+    print("\nIntervalos encontrados:")
+
+    for i, intervalo in enumerate(intervalos, start=1):
+        print(f"  Intervalo {i}: {intervalo}")
+
+    if not intervalos:
+        print("No se encontraron intervalos con cambio de signo.")
+        return
+
     tol = ingresar_float("  Ingrese la cota de error E", 0.0001)
+
+    if tol <= 0:
+        print("La tolerancia debe ser mayor que cero.")
+        return
+
+    print("\nSeleccione el intervalo que desea resolver:")
+
+    for i, (a, b) in enumerate(intervalos, start=1):
+        print(f"  {i}. [{a}, {b}]")
+
+    opcion = int(input("Ingrese el numero del intervalo: "))
+
+    if opcion < 1 or opcion > len(intervalos):
+        print("Opcion invalida.")
+        return
+
+    a, b = intervalos[opcion - 1]
+
     k_estimado = max(1, math.floor(math.log2((b - a) / tol)) + 1)
+
+    print(f"\nResolviendo intervalo [{a}, {b}]")
     print(f"Iteraciones estimadas antes de comenzar: {k_estimado}")
+
     raiz_x, iters, hist, t_ejec = metodo_intervalo_medio(
         f_publicidad, a, b, tol=tol, var_name="x"
     )
