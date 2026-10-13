@@ -21,7 +21,9 @@ import math
 import time
 
 try:
+    # pyrefly: ignore [missing-import]
     import matplotlib.pyplot as plt
+    # pyrefly: ignore [missing-import]
     import numpy as np
     HAS_MATPLOTLIB = True
 except ImportError:

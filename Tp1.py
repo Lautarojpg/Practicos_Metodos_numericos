@@ -79,3 +79,5 @@ def aproximarPi():
 
     pi = 4 * suma
     print(f"Valor aproximado de PI = {pi}")
+
+aproximarPi()
