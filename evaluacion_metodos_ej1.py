@@ -1,506 +1,420 @@
-"""
-===============================================================================
-METODOS COMPUTACIONALES - EVALUACION Y COMPARACION DE METODOS NUMERICOS
-EJERCICIO 1: CALCULO DE LA PROFUNDIDAD EN UN TANQUE ESFERICO
-===============================================================================
-Este script resuelve el Ejercicio 1 (Tanque Esférico) aplicando y comparando
-dos métodos cerrados de resolución de ecuaciones no lineales:
-  1. Método de Intervalo Medio (Bisección)
-  2. Método de Interpolación Lineal (Regula Falsi / Falsa Posición)
-
-Ecuación física del volumen del líquido:
-  V = pi * h^2 * (3R - h) / 3
-Para un radio R = 3.0 m y un volumen de agua V = 30.0 m^3:
-  f(h) = pi * (h**2) * ((9.0 - h) / 3.0) - 30.0 = 0
-
-Flujo de ejecución:
-  1. Método de Tanteo (h entre 0 y 10 con paso de 0.5) para ubicar raíces.
-  2. Selección de intervalo por parte del usuario mediante consola.
-  3. Método de Intervalo Medio con cálculo previo de iteraciones estimadas.
-  4. Método de Interpolación Lineal con la fórmula de la cátedra.
-  5. Gráfica comparativa con Matplotlib mostrando la convergencia de ambos métodos.
-===============================================================================
-"""
-
 import math
 import sys
 import time
 
-# Configuración de codificación UTF-8 para consola en Windows
+# Configuración de codificación UTF-8
 if hasattr(sys.stdout, 'reconfigure'):
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
 
+import sympy as sp
+from sympy import Interval
+from sympy.calculus.util import continuous_domain
+from sympy.parsing.sympy_parser import (
+    parse_expr,
+    standard_transformations,
+    implicit_multiplication_application,
+    convert_xor,
+)
+
 try:
-    # pyrefly: ignore [missing-import]
     import matplotlib.pyplot as plt
-    # pyrefly: ignore [missing-import]
     import numpy as np
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
 
-
-# =============================================================================
-# FUNCION MATEMATICA DEL EJERCICIO 1: TANQUE ESFERICO
-# =============================================================================
-def f_tanque(h):
-    """
-    Función matemática correspondiente al Ejercicio 1:
-    f(h) = pi * (h**2) * ((9.0 - h) / 3.0) - 30.0
-    """
-    return math.pi * (h ** 2) * ((9.0 - h) / 3.0) - 30.0
+ANCHO = 85
 
 
 # =============================================================================
-# 1. METODO DE TANTEO
+# 1. PARSING DE FUNCION MATEMATICA
 # =============================================================================
-def metodo_tanteo(f, inicio=0.0, fin=10.0, incremento=0.5):
-    """
-    Evalua f(h) desde inicio hasta fin con un incremento especificado
-    para hallar intervalos donde f(h) cambia de signo (Teorema de Bolzano).
-    """
+def parsear_funcion(expr_str):
+    """Parsea la expresion matematica y devuelve lambdas numericos para f y f'."""
+    trans = standard_transformations + (implicit_multiplication_application, convert_xor)
+    local_dict = {'e': sp.E, 'E': sp.E, 'pi': sp.pi, 'PI': sp.pi, 'ln': sp.log, 'sen': sp.sin}
+    sym_expr = parse_expr(expr_str.strip(), local_dict=local_dict, transformations=trans)
+
+    simbolos = [s for s in sym_expr.free_symbols if s not in (sp.pi, sp.E)]
+    var = simbolos[0] if simbolos else sp.Symbol('x')
+    df_expr = sp.diff(sym_expr, var)
+
+    f_num = sp.lambdify(var, sym_expr, modules=['numpy', 'math'])
+    df_num = sp.lambdify(var, df_expr, modules=['numpy', 'math'])
+
+    f = lambda val: float(np.asarray(f_num(val)).item()) if isinstance(f_num(val), (np.ndarray, list)) else float(f_num(val))
+    df = lambda val: float(np.asarray(df_num(val)).item()) if isinstance(df_num(val), (np.ndarray, list)) else float(df_num(val))
+
+    return sym_expr, var, df_expr, f, df
+
+
+# =============================================================================
+# 2. METODO DE TANTEO (RANGO FIJO -15 A 15 CON PASO ELEGIDO)
+# =============================================================================
+def metodo_tanteo(f, a=-15.0, b=15.0, paso=0.5):
+    """Busca intervalos con cambio de signo en [-15, 15] con el paso especificado."""
     intervalos = []
-    x = inicio
-
-    while x < fin:
-        siguiente = round(min(x + incremento, fin), 6)
-        fx = f(x)
-        fsiguiente = f(siguiente)
-
-        if fx == 0.0:
-            intervalos.append((x, x))
-        elif fx * fsiguiente < 0:
-            intervalos.append((x, siguiente))
-
-        x = siguiente
-
+    x = a
+    while x < b:
+        sig = round(min(x + paso, b), 4)
+        try:
+            fx, fsig = f(x), f(sig)
+            if fx * fsig <= 0:
+                intervalos.append((x, sig))
+        except Exception:
+            pass
+        x = sig
     return intervalos
 
 
 # =============================================================================
-# FORMATO VISUAL DE TABLAS
+# 3. ANALISIS DE CONVERGENCIA PREVIO (SEPARADOS POR METODO)
 # =============================================================================
-ANCHO_TABLA = 98
+def analisis_convergencia_biseccion(f, a, b, sym_expr, var):
+    """Analiza continuidad y Bolzano para Intervalo Medio (Biseccion)."""
+    try:
+        dominio = continuous_domain(sym_expr, var, Interval(a, b))
+        es_continua = (dominio == Interval(a, b))
+    except Exception:
+        es_continua = True
 
-def imprimir_encabezado_tabla():
-    """
-    Imprime el encabezado estricto con el formato visual solicitado:
-    | Iteración | x (Raíz) | f(x) | Intervalo actual [a, b] | Error |
-    """
-    print("=" * ANCHO_TABLA)
-    encabezado = (
-        f"| {'Iteración':^11} | {'x (Raíz)':^14} | {'f(x)':^16} "
-        f"| {'Intervalo actual [a, b]':^31} | {'Error':^14} |"
+    txt_cont = (
+        f"Se verifica el dominio en [{a:.4f}, {b:.4f}]. Se tiene que la funcion no presenta saltos ni asintotas, por lo tanto, SE CUMPLE."
+        if es_continua else
+        f"Se verifica el dominio en [{a:.4f}, {b:.4f}]. Se tiene que presenta asintotas o discontinuidades, por lo tanto, NO SE CUMPLE."
     )
-    print(encabezado)
-    print("=" * ANCHO_TABLA)
 
-
-def imprimir_fila_tabla(k, c, fc, a, b, error):
-    """
-    Imprime una fila de datos manteniendo la alineacion estricta de columnas.
-    """
-    intervalo_str = f"[{a:.6f}, {b:.6f}]"
-    fila = (
-        f"| {k:^11} | {c:^14.6f} | {fc:^16.6e} "
-        f"| {intervalo_str:^31} | {error:^14.6e} |"
+    fa, fb = f(a), f(b)
+    prod = fa * fb
+    bolzano = (prod <= 0) or (fa == 0.0) or (fb == 0.0)
+    txt_bolz = (
+        f"Se verifica el cambio de signo. Se tiene que f(a)*f(b) = {prod:.4e} <= 0, por lo tanto, SE CUMPLE."
+        if bolzano else
+        f"Se verifica el cambio de signo. Se tiene que f(a)*f(b) = {prod:.4e} > 0, por lo tanto, NO SE CUMPLE."
     )
-    print(fila)
+
+    cumple_todo = es_continua and bolzano
+    txt_conc = (
+        "Al cumplirse las condiciones, se garantiza al menos una raiz. Procediendo con la ejecucion..."
+        if cumple_todo else
+        "NO SE CUMPLE. Por lo tanto, se saltea la ejecucion del Metodo de Intervalo Medio."
+    )
+
+    print(f"""
+{"=" * ANCHO}
+ANALISIS DE CONVERGENCIA: INTERVALO MEDIO (BISECCION)
+{"=" * ANCHO}
+- Condicion 1 (Continuidad): {txt_cont}
+- Condicion 2 (Teorema de Bolzano): {txt_bolz}
+--> Conclusion: {txt_conc}""")
+    return cumple_todo
+
+
+def analisis_convergencia_interpolacion(f, df, a, b, sym_expr, var):
+    """Analiza continuidad, Bolzano, rango de f'(x) y monotonia para Interpolacion Lineal."""
+    try:
+        dominio = continuous_domain(sym_expr, var, Interval(a, b))
+        es_continua = (dominio == Interval(a, b))
+    except Exception:
+        es_continua = True
+
+    txt_cont = (
+        "Se verifica el dominio. Se tiene que es continua, por lo tanto, SE CUMPLE."
+        if es_continua else
+        f"Se verifica el dominio en [{a:.4f}, {b:.4f}]. Se tiene que presenta asintotas o discontinuidades, por lo tanto, NO SE CUMPLE."
+    )
+
+    fa, fb = f(a), f(b)
+    prod = fa * fb
+    bolzano = (prod <= 0) or (fa == 0.0) or (fb == 0.0)
+    txt_bolz = (
+        f"Se verifica el cambio de signo. Se tiene f(a)*f(b) = {prod:.4e} <= 0, por lo tanto, SE CUMPLE."
+        if bolzano else
+        f"Se verifica el cambio de signo. Se tiene f(a)*f(b) = {prod:.4e} > 0, por lo tanto, NO SE CUMPLE."
+    )
+
+    xs = np.linspace(a, b, 200) if HAS_MATPLOTLIB else [a + i * (b - a) / 200 for i in range(201)]
+    dfs = []
+    for x in xs:
+        try:
+            dfs.append(df(x))
+        except Exception:
+            pass
+    df_min, df_max = (min(dfs), max(dfs)) if dfs else (0.0, 0.0)
+    no_cero = (df_min * df_max > 0)
+    monotona = no_cero
+
+    if no_cero and monotona:
+        txt_deriv = f"Se verifica el comportamiento de f'(x). Se tiene que la derivada fluctua entre [{df_min:.4e}, {df_max:.4e}]. Como la derivada no se hace cero y mantiene un signo constante, la funcion es estrictamente monotona, por lo tanto, SE CUMPLE."
+    else:
+        txt_deriv = f"Se verifica el comportamiento de f'(x). Se tiene que la derivada fluctua entre [{df_min:.4e}, {df_max:.4e}]. Como la derivada alcanza el cero o cambia de signo, hay riesgo de estancamiento, por lo tanto, NO SE CUMPLE."
+
+    cumple_todo = es_continua and bolzano and no_cero and monotona
+    txt_conc = (
+        "Procediendo con la ejecucion..."
+        if cumple_todo else
+        "NO SE CUMPLE. Por lo tanto, se saltea la ejecucion de Interpolacion Lineal."
+    )
+
+    print(f"""
+{"=" * ANCHO}
+ANALISIS DE CONVERGENCIA: INTERPOLACION LINEAL
+{"=" * ANCHO}
+- Condicion 1 (Continuidad): {txt_cont}
+- Condicion 2 (Bolzano): {txt_bolz}
+- Condicion 3 (Monotonia y Derivada): {txt_deriv}
+--> Conclusion: {txt_conc}""")
+    return cumple_todo
+
+
+def verificar_convergencia(f, df, a, b, sym_expr, var):
+    """Funcion unificada de compatibilidad que retorna (apto_biseccion, apto_interpolacion)."""
+    return analisis_convergencia_biseccion(f, a, b, sym_expr, var), analisis_convergencia_interpolacion(f, df, a, b, sym_expr, var)
 
 
 # =============================================================================
-# 3. METODO DE INTERVALO MEDIO (BISECCION)
+# FORMATO COMPACTO DE TABLA DE ITERACIONES
 # =============================================================================
-def metodo_intervalo_medio(f, a_inicial, b_inicial, tol=0.001, max_iter=100):
-    """
-    Aplica el Metodo de Intervalo Medio (Biseccion) en el intervalo [a, b].
-    Calcula antes del ciclo la cantidad de iteraciones estimadas teoricas:
-      n >= (math.log(b - a) - math.log(tol)) / math.log(2)
-    """
-    a = a_inicial
-    b = b_inicial
-    fa = f(a)
-    fb = f(b)
+def imprimir_encabezado():
+    print("=" * ANCHO)
+    print(f"| {'Iteracion':^10} | {'x (Raiz)':^11} | {'f(x)':^13} | {'Intervalo actual [a, b]':^23} | {'Error':^12} |")
+    print("=" * ANCHO)
 
-    # Verificacion previa de Bolzano
-    if fa * fb > 0:
-        print(f"\n[ADVERTENCIA] No hay cambio de signo en [{a}, {b}].")
-        print(f"  f({a}) = {fa:.6f}, f({b}) = {fb:.6f}")
-        return None, 0, [], 0.0
 
-    print("\n" + "=" * ANCHO_TABLA)
-    print("                   EJECUCION: METODO DE INTERVALO MEDIO (BISECCION)")
-    print("=" * ANCHO_TABLA)
+def imprimir_fila(k, c, fc, a, b, err):
+    inter = f"[{a:.5f}, {b:.5f}]"
+    print(f"| {k:^10} | {c:^11.6f} | {fc:^13.4e} | {inter:^23} | {err:^12.4e} |")
 
-    # Estimacion previa de iteraciones antes de ingresar al ciclo
-    diff_intervalo = b - a
-    n_formula = (math.log(diff_intervalo) - math.log(tol)) / math.log(2)
-    n_estimadas = max(1, math.ceil(n_formula))
 
-    print(f"Iteraciones estimadas teoricas con la formula:")
-    print(f"  n >= (math.log(b - a) - math.log(E)) / math.log(2)")
-    print(f"  n >= (math.log({diff_intervalo:.6f}) - math.log({tol:.6f})) / math.log(2)")
-    print(f"  n >= ({math.log(diff_intervalo):.6f} - ({math.log(tol):.6f})) / {math.log(2):.6f} = {n_formula:.4f}")
-    print(f"  --> Cantidad minima de iteraciones estimadas: n >= {n_estimadas}\n")
+# =============================================================================
+# 4. METODO DE INTERVALO MEDIO (BISECCION)
+# =============================================================================
+def metodo_intervalo_medio(f, a, b, tol=0.001, max_iter=100):
+    fa, fb = f(a), f(b)
+    diff = b - a
+    n_est = max(1, math.ceil((math.log(diff) - math.log(tol)) / math.log(2))) if diff > 0 and tol > 0 else 1
 
-    historial = []
+    print("=" * ANCHO)
+    print(f"EJECUCION: METODO DE INTERVALO MEDIO (BISECCION) - Iteraciones estimadas: n >= {n_est}")
+    imprimir_encabezado()
+
     k = 0
-    c = (a + b) / 2.0
-    error = (b - a) / 2.0
-
-    imprimir_encabezado_tabla()
-
-    inicio_tiempo = time.perf_counter()
-
+    t0 = time.perf_counter()
     while k < max_iter:
         k += 1
         c = (a + b) / 2.0
         fc = f(c)
-        error = (b - a) / 2.0
+        err = (b - a) / 2.0
+        imprimir_fila(k, c, fc, a, b, err)
 
-        historial.append({
-            'iter': k,
-            'a': a,
-            'b': b,
-            'c': c,
-            'fc': fc,
-            'error': error
-        })
-
-        imprimir_fila_tabla(k, c, fc, a, b, error)
-
-        # Condicion de parada: tolerancia alcanzada o raiz exacta
-        if error < tol or abs(fc) == 0.0:
+        if err < tol or fc == 0.0:
             break
-
-        # Reasignacion de subintervalo segun el Teorema del Valor Medio / Bolzano
         if fa * fc < 0:
-            b = c
-            fb = fc
+            b, fb = c, fc
         else:
-            a = c
-            fa = fc
+            a, fa = c, fc
 
-    fin_tiempo = time.perf_counter()
-    tiempo_ejec = fin_tiempo - inicio_tiempo
-    raiz = c
-    error_final = error
-
-    print("=" * ANCHO_TABLA)
-    print(f"---> REPORTE FINAL: METODO DE INTERVALO MEDIO <---")
-    print(f"  * Raiz hallada: {raiz:.6f}")
-    print(f"  * Valor de f(raiz): {f(raiz):.6e}")
-    print(f"  * Cantidad de iteraciones realizadas: {k}")
-    print(f"  * Cota de error final alcanzada: {error_final:.6e}")
-    print(f"  * Tiempo de ejecucion: {tiempo_ejec:.6f} segundos\n")
-
-    return raiz, k, historial, tiempo_ejec
+    t1 = time.perf_counter()
+    print("=" * ANCHO)
+    print(f"--> Biseccion: Raiz = {c:.6f} | f(Raiz) = {fc:.4e} | Iters = {k} | Error = {err:.4e} | Tiempo = {t1 - t0:.6f} s\n")
+    return c, k, err, t1 - t0
 
 
 # =============================================================================
-# 4. METODO DE INTERPOLACION LINEAL (REGULA FALSI)
+# 5. METODO DE INTERPOLACION LINEAL (REGULA FALSI)
 # =============================================================================
-def metodo_interpolacion_lineal(f, a_inicial, b_inicial, tol=0.001, max_iter=100):
-    """
-    Aplica el Metodo de Interpolacion Lineal (Regula Falsi) en el intervalo [a, b].
-    Formula exacta de la catedra:
-      c = (a * f(b) - b * f(a)) / (f(b) - f(a))
-    Reasignacion de limites:
-      si f(a) * f(c) < 0 -> b = c
-      sino             -> a = c
-    """
-    a = a_inicial
-    b = b_inicial
-    fa = f(a)
-    fb = f(b)
+def metodo_interpolacion_lineal(f, a, b, tol=0.001, max_iter=100):
+    fa, fb = f(a), f(b)
 
-    if fa * fb > 0:
-        print(f"\n[ADVERTENCIA] No hay cambio de signo en [{a}, {b}].")
-        print(f"  f({a}) = {fa:.6f}, f({b}) = {fb:.6f}")
-        return None, 0, [], 0.0
+    print("=" * ANCHO)
+    print("EJECUCION: METODO DE INTERPOLACION LINEAL")
+    imprimir_encabezado()
 
-    print("\n" + "=" * ANCHO_TABLA)
-    print("              EJECUCION: METODO DE INTERPOLACION LINEAL (REGULA FALSI)")
-    print("=" * ANCHO_TABLA)
-    print(f"Formula de la catedra: c = (a * f(b) - b * f(a)) / (f(b) - f(a))")
-    print(f"Tolerancia establecida: E = {tol}\n")
-
-    historial = []
     k = 0
-    c_anterior = None
-
-    imprimir_encabezado_tabla()
-
-    inicio_tiempo = time.perf_counter()
+    c_ant = None
+    err = abs(b - a)
+    t0 = time.perf_counter()
 
     while k < max_iter:
         k += 1
-
-        # Formula exacta de la catedra para Interpolacion Lineal
-        c = (a * fb - b * fa) / (fb - fa)
+        den = fb - fa
+        c = (a * fb - b * fa) / den if abs(den) > 1e-15 else (a + b) / 2.0
         fc = f(c)
+        err = abs(c - c_ant) if c_ant is not None else abs(b - a)
+        imprimir_fila(k, c, fc, a, b, err)
 
-        # Calculo del error
-        if c_anterior is not None:
-            error = abs(c - c_anterior)
-        else:
-            error = abs(b - a)
-
-        historial.append({
-            'iter': k,
-            'a': a,
-            'b': b,
-            'c': c,
-            'fc': fc,
-            'error': error
-        })
-
-        imprimir_fila_tabla(k, c, fc, a, b, error)
-
-        # Criterio de parada
-        if (c_anterior is not None and error < tol) or abs(fc) == 0.0:
+        if (c_ant is not None and err < tol) or fc == 0.0:
             break
-
-        c_anterior = c
-
-        # Reasignacion de limites segun f(a) * f(c) < 0
+        c_ant = c
         if fa * fc < 0:
-            b = c
-            fb = fc
+            b, fb = c, fc
         else:
-            a = c
-            fa = fc
+            a, fa = c, fc
 
-    fin_tiempo = time.perf_counter()
-    tiempo_ejec = fin_tiempo - inicio_tiempo
-    raiz = c
-    error_final = error
-
-    print("=" * ANCHO_TABLA)
-    print(f"---> REPORTE FINAL: METODO DE INTERPOLACION LINEAL <---")
-    print(f"  * Raiz hallada: {raiz:.6f}")
-    print(f"  * Valor de f(raiz): {f(raiz):.6e}")
-    print(f"  * Cantidad de iteraciones realizadas: {k}")
-    print(f"  * Cota de error final alcanzada: {error_final:.6e}")
-    print(f"  * Tiempo de ejecucion: {tiempo_ejec:.6f} segundos\n")
-
-    return raiz, k, historial, tiempo_ejec
+    t1 = time.perf_counter()
+    print("=" * ANCHO)
+    print(f"--> Interpolacion: Raiz = {c:.6f} | f(Raiz) = {fc:.4e} | Iters = {k} | Error = {err:.4e} | Tiempo = {t1 - t0:.6f} s\n")
+    return c, k, err, t1 - t0
 
 
 # =============================================================================
-# 5. GRAFICA COMPARATIVA (MATPLOTLIB)
+# 6. CUADRO COMPARATIVO RESUMIDO (CON MANEJO DE METODOS SALTEADOS)
 # =============================================================================
-def graficar_comparacion(f, a_orig, b_orig, raiz_im, raiz_il, iters_im, iters_il):
-    """
-    Genera la grafica comparativa con Matplotlib:
-      - Curva de la funcion f(h).
-      - Recta de referencia y = 0.
-      - Limites del intervalo inicial [a, b].
-      - Punto de la raiz hallada por Intervalo Medio.
-      - Punto de la raiz hallada por Interpolacion Lineal.
-    """
+def mostrar_cuadro_comparativo(r_im, it_im, t_im, err_im, r_il, it_il, t_il, err_il, f):
+    im_ok = r_im is not None
+    il_ok = r_il is not None
+
+    r_im_str = f"{r_im:.6f}" if im_ok else "No ejecutado"
+    f_im_str = f"{f(r_im):.4e}" if im_ok else "N/A"
+    it_im_str = str(it_im) if im_ok else "N/A"
+    err_im_str = f"{err_im:.4e}" if im_ok else "N/A"
+    t_im_str = f"{t_im:.6f} s" if im_ok else "N/A"
+
+    r_il_str = f"{r_il:.6f}" if il_ok else "No ejecutado"
+    f_il_str = f"{f(r_il):.4e}" if il_ok else "N/A"
+    it_il_str = str(it_il) if il_ok else "N/A"
+    err_il_str = f"{err_il:.4e}" if il_ok else "N/A"
+    t_il_str = f"{t_il:.6f} s" if il_ok else "N/A"
+
+    print("=" * ANCHO)
+    print("                      CUADRO COMPARATIVO RESUMIDO ENTRE METODOS")
+    print("=" * ANCHO)
+    print(f"| {'Parametro':<27} | {'Intervalo Medio (Biseccion)':<27} | {'Interpolacion Lineal':<21} |")
+    print("-" * ANCHO)
+    print(f"| {'Raiz hallada x*':<27} | {r_im_str:<27} | {r_il_str:<21} |")
+    print(f"| {'Valor f(x*)':<27} | {f_im_str:<27} | {f_il_str:<21} |")
+    print(f"| {'Iteraciones realizadas':<27} | {it_im_str:<27} | {it_il_str:<21} |")
+    print(f"| {'Cota de error final':<27} | {err_im_str:<27} | {err_il_str:<21} |")
+    print(f"| {'Tiempo de ejecucion [s]':<27} | {t_im_str:<27} | {t_il_str:<21} |")
+    print("=" * ANCHO)
+
+
+# =============================================================================
+# 7. GRAFICA COMPARATIVA (SUBPLOTS 1x2 CON ORIGEN VISIBLE Y MANEJO DE SALTEADOS)
+# =============================================================================
+def graficar_comparacion(f, var, a, b, r_im, it_im, r_il, it_il):
     if not HAS_MATPLOTLIB:
-        print("\n[Nota: matplotlib o numpy no estan disponibles para graficar.]")
         return
+    x_min = min(a, 0.0) - 1.0
+    x_max = max(b, 0.0) + 1.0
 
-    margen = max(abs(b_orig - a_orig) * 0.8, 0.4)
-    x_min = max(0.0, a_orig - margen)
-    x_max = min(10.0, b_orig + margen)
+    xs = np.linspace(x_min, x_max, 500)
+    ys = []
+    for x in xs:
+        try:
+            val = f(x)
+            if abs(val) > 1e4:
+                ys.append(float('nan'))
+            else:
+                ys.append(val)
+        except Exception:
+            ys.append(float('nan'))
 
-    h_vals = np.linspace(x_min, x_max, 500)
-    f_vals = [f(h) for h in h_vals]
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-    plt.figure(figsize=(10, 6))
+    for ax, title, raiz, iters, col in [
+        (ax1, "Intervalo Medio (Biseccion)", r_im, it_im, "red"),
+        (ax2, "Interpolacion Lineal", r_il, it_il, "blue")
+    ]:
+        ax.plot(xs, ys, color="tab:blue", linewidth=2.0, label=f"f({var})")
+        # Ejes cartesianos en negro formando cruz visible en (0, 0)
+        ax.axhline(0, color='black', linewidth=1.5)
+        ax.axvline(0, color='black', linewidth=1.5)
+        ax.set_xlim(x_min, x_max)
 
-    # Curva f(h)
-    plt.plot(
-        h_vals,
-        f_vals,
-        label=r'$f(h) = \pi \cdot h^2 \cdot \frac{9-h}{3} - 30$',
-        color='#1f77b4',
-        linewidth=2.2
-    )
+        # Referencia visual del intervalo [a, b]
+        ax.axvline(a, color='gray', linestyle=':', linewidth=1.3, label=f'Intervalo [{a:.2f}, {b:.2f}]')
+        ax.axvline(b, color='gray', linestyle=':', linewidth=1.3)
 
-    # Linea de referencia y = 0
-    plt.axhline(0, color='black', linestyle='--', linewidth=1.0, label='y = 0 (Eje neutro)')
+        if raiz is not None:
+            ax.plot(raiz, f(raiz), marker='o', color=col, markersize=7, label=f"Raiz: {raiz:.6f} ({iters} iters)")
+        else:
+            ax.text(0.5, 0.5, "Metodo no ejecutado\n(No cumplio condiciones)",
+                    transform=ax.transAxes, ha='center', va='center',
+                    fontsize=10, color='darkred',
+                    bbox=dict(boxstyle='round,pad=0.5', facecolor='mistyrose', alpha=0.8))
 
-    # Limites del intervalo inicial
-    plt.axvline(a_orig, color='#2ca02c', linestyle=':', linewidth=1.5, label=f'Limite inferior a = {a_orig:.2f}')
-    plt.axvline(b_orig, color='#9467bd', linestyle=':', linewidth=1.5, label=f'Limite superior b = {b_orig:.2f}')
+        ax.set_title(title, fontweight="bold", fontsize=11)
+        ax.set_xlabel(str(var))
+        ax.set_ylabel(f"f({var})")
+        ax.grid(True, linestyle="--", alpha=0.5)
+        ax.legend(loc="best", fontsize=9)
 
-    # Puntos de las raices
-    f_im = f(raiz_im)
-    f_il = f(raiz_il)
-
-    plt.plot(
-        raiz_im,
-        f_im,
-        marker='o',
-        markersize=9,
-        color='#d62728',
-        linestyle='None',
-        label=f'Intervalo Medio: h = {raiz_im:.6f} ({iters_im} iters)'
-    )
-
-    plt.plot(
-        raiz_il,
-        f_il,
-        marker='s',
-        markersize=7,
-        color='#ff7f0e',
-        linestyle='None',
-        label=f'Interpolacion Lineal: h = {raiz_il:.6f} ({iters_il} iters)'
-    )
-
-    # Configuracion estetica de la grafica
-    plt.title(
-        'Ejercicio 1: Tanque Esferico - Comparacion de Metodos Numericos\n'
-        r'Resolucion de $f(h) = 0$ con Tolerancia $E = 0.001$',
-        fontsize=13,
-        fontweight='bold',
-        pad=15
-    )
-    plt.xlabel('Profundidad del liquido en el tanque h [m]', fontsize=11)
-    plt.ylabel('Volumen remanente f(h) [m^3]', fontsize=11)
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.legend(loc='best', fontsize=10, framealpha=0.9)
     plt.tight_layout()
-
     print("\nVisualizando grafica comparativa...")
     plt.show()
 
 
 # =============================================================================
-# CUADRO COMPARATIVO CONSOLIDADO EN CONSOLA
-# =============================================================================
-def mostrar_cuadro_comparativo(raiz_im, iters_im, t_im, raiz_il, iters_il, t_il):
-    """
-    Muestra en consola un resumen visual comparativo entre ambos metodos.
-    """
-    f_im = f_tanque(raiz_im)
-    f_il = f_tanque(raiz_il)
-
-    print("\n" + "=" * ANCHO_TABLA)
-    print("                    CUADRO COMPARATIVO RESUMIDO ENTRE METODOS")
-    print("=" * ANCHO_TABLA)
-    encabezado = (
-        f"| {'Parametro de Comparacion':<30} "
-        f"| {'Intervalo Medio (Biseccion)':<30} "
-        f"| {'Interpolacion Lineal':<30} |"
-    )
-    print(encabezado)
-    print("-" * ANCHO_TABLA)
-
-    fila_raiz = f"| {'Raiz hallada h [m]':<30} | {f'{raiz_im:.6f}':<30} | {f'{raiz_il:.6f}':<30} |"
-    fila_f = f"| {'Valor f(h) en la raiz':<30} | {f'{f_im:.6e}':<30} | {f'{f_il:.6e}':<30} |"
-    fila_iter = f"| {'Iteraciones requeridas':<30} | {f'{iters_im}':<30} | {f'{iters_il}':<30} |"
-    fila_tiempo = f"| {'Tiempo de ejecucion [s]':<30} | {f'{t_im:.6f} s':<30} | {f'{t_il:.6f} s':<30} |"
-
-    print(fila_raiz)
-    print(fila_f)
-    print(fila_iter)
-    print(fila_tiempo)
-    print("=" * ANCHO_TABLA)
-
-    print("\n---> CONCLUSIONES TECNICAS <---")
-    print(f"1. Ambos metodos convergen hacia la raiz aproximada en el entorno de h ~ {raiz_il:.4f} m.")
-    print(f"2. Eficiencia: El metodo de Interpolacion Lineal requirio {iters_il} iteraciones frente a")
-    print(f"   las {iters_im} iteraciones del Metodo de Intervalo Medio, demostrando una mayor velocidad")
-    print(f"   de aproximacion inicial al aprovechar las pendientes y valores de la funcion.")
-    print("=" * ANCHO_TABLA + "\n")
-
-
-# =============================================================================
-# FUNCION PRINCIPAL (FLUJO DE EJECUCION ESTRICTO)
+# PROGRAMA PRINCIPAL (FLUJO ESTRICTO: ANALISIS -> EJECUCION -> ANALISIS -> EJECUCION)
 # =============================================================================
 def main():
-    print("\n" + "#" * ANCHO_TABLA)
-    print("   METODOS COMPUTACIONALES - EJERCICIO 1: EVALUACION Y COMPARACION DE METODOS")
-    print("             (Intervalo Medio vs. Interpolacion Lineal - Tanque Esferico)")
-    print("#" * ANCHO_TABLA)
-    print("Ecuacion a resolver:")
-    print("  f(h) = pi * (h**2) * ((9.0 - h) / 3.0) - 30.0 = 0")
-    print("Tolerancia fijada para los metodos: E = 0.001\n")
+    print("=" * ANCHO)
+    print("   METODOS COMPUTACIONALES - BISECCION VS INTERPOLACION LINEAL")
+    print("=" * ANCHO)
 
-    # -------------------------------------------------------------------------
-    # PASO 1: METODO DE TANTEO
-    # -------------------------------------------------------------------------
-    print("=" * ANCHO_TABLA)
-    print("1. METODO DE TANTEO (BUSQUEDA DE INTERVALOS CON CAMBIO DE SIGNO)")
-    print("=" * ANCHO_TABLA)
-    print("Evaluando f(h) desde h = 0.0 hasta h = 10.0 con incremento de 0.5...")
+    expr_in = input("Ingrese la funcion matematica f(x): ").strip()
+    if not expr_in:
+        expr_in = "pi * x^2 * ((9 - x) / 3) - 30"
 
-    intervalos = metodo_tanteo(f_tanque, inicio=0.0, fin=10.0, incremento=0.5)
+    expr, var, df_expr, f, df = parsear_funcion(expr_in)
+    print(f"--> Funcion interpretada: f({var}) = {expr}")
+    print(f"--> Derivada analitica:   f'({var}) = {df_expr}\n")
+
+    paso_in = input("Ingrese el incremento / paso para el tanteo en [-15, 15] [0.5]: ").strip()
+    try:
+        paso = float(paso_in) if paso_in else 0.5
+        if paso <= 0:
+            paso = 0.5
+    except ValueError:
+        paso = 0.5
+
+    print(f"\nMetodo de Tanteo (evaluando de -15 a 15 con paso {paso})...")
+    intervalos = metodo_tanteo(f, a=-15.0, b=15.0, paso=paso)
 
     if not intervalos:
-        print("\n[ERROR] No se encontraron intervalos con cambio de signo en el rango evaluado.")
+        print(f"[ERROR] No se encontraron intervalos con cambio de signo en [-15, 15] con paso {paso}.")
         return
 
     print(f"\nSe encontraron {len(intervalos)} intervalo(s) con cambio de signo:")
     for i, (a_int, b_int) in enumerate(intervalos, start=1):
-        print(f"  {i}. [{a_int:.1f}, {b_int:.1f}]   ->   f({a_int:.1f}) = {f_tanque(a_int):.4f}, f({b_int:.1f}) = {f_tanque(b_int):.4f}")
+        print(f"  {i}. [{a_int:.4f}, {b_int:.4f}] -> f(a) = {f(a_int):.4e}, f(b) = {f(b_int):.4e}")
 
-    # -------------------------------------------------------------------------
-    # PASO 2: SELECCION DE INTERVALO
-    # -------------------------------------------------------------------------
-    print("\n" + "=" * ANCHO_TABLA)
-    print("2. SELECCION DE INTERVALO POR EL USUARIO")
-    print("=" * ANCHO_TABLA)
+    opc = input(f"\nSeleccione el intervalo a evaluar (1-{len(intervalos)}) [1]: ").strip()
+    idx = int(opc) if opc else 1
+    a_elegido, b_elegido = intervalos[idx - 1]
 
-    while True:
-        try:
-            opcion_usuario = input(f"Ingrese el numero del intervalo sobre el cual desea trabajar (1-{len(intervalos)}): ").strip()
-            opcion = int(opcion_usuario)
-            if 1 <= opcion <= len(intervalos):
-                break
-            print(f"Opcion fuera de rango. Por favor ingrese un numero entre 1 y {len(intervalos)}.")
-        except ValueError:
-            print("Entrada no valida. Debe ingresar un numero entero.")
+    tol_in = input("Ingrese la tolerancia E [0.001]: ").strip()
+    tol = float(tol_in) if tol_in else 0.001
 
-    a_elegido, b_elegido = intervalos[opcion - 1]
-    tol = 0.001
+    # =========================================================================
+    # BLOQUE 1: ANALISIS DE BISECCION -> EJECUCION DE BISECCION (SI CUMPLE)
+    # =========================================================================
+    if analisis_convergencia_biseccion(f, a_elegido, b_elegido, expr, var):
+        r_im, it_im, err_im, t_im = metodo_intervalo_medio(f, a_elegido, b_elegido, tol)
+    else:
+        r_im, it_im, err_im, t_im = None, None, None, None
 
-    print(f"\nIntervalo seleccionado para trabajar: [{a_elegido}, {b_elegido}]")
-    print(f"Tolerancia asignada: E = {tol}")
+    # =========================================================================
+    # BLOQUE 2: ANALISIS DE INTERPOLACION -> EJECUCION DE INTERPOLACION (SI CUMPLE)
+    # =========================================================================
+    if analisis_convergencia_interpolacion(f, df, a_elegido, b_elegido, expr, var):
+        r_il, it_il, err_il, t_il = metodo_interpolacion_lineal(f, a_elegido, b_elegido, tol)
+    else:
+        r_il, it_il, err_il, t_il = None, None, None, None
 
-    # -------------------------------------------------------------------------
-    # PASO 3: METODO DE INTERVALO MEDIO
-    # -------------------------------------------------------------------------
-    raiz_im, iters_im, hist_im, t_im = metodo_intervalo_medio(
-        f_tanque,
-        a_inicial=a_elegido,
-        b_inicial=b_elegido,
-        tol=tol
-    )
+    # =========================================================================
+    # BLOQUE 3: CUADRO COMPARATIVO RESUMIDO
+    # =========================================================================
+    mostrar_cuadro_comparativo(r_im, it_im, t_im, err_im, r_il, it_il, t_il, err_il, f)
 
-    # -------------------------------------------------------------------------
-    # PASO 4: METODO DE INTERPOLACION LINEAL
-    # -------------------------------------------------------------------------
-    raiz_il, iters_il, hist_il, t_il = metodo_interpolacion_lineal(
-        f_tanque,
-        a_inicial=a_elegido,
-        b_inicial=b_elegido,
-        tol=tol
-    )
-
-    # Resumen comparativo en consola
-    mostrar_cuadro_comparativo(raiz_im, iters_im, t_im, raiz_il, iters_il, t_il)
-
-    # -------------------------------------------------------------------------
-    # PASO 5: GRAFICA COMPARATIVA (MATPLOTLIB)
-    # -------------------------------------------------------------------------
-    graficar_comparacion(
-        f_tanque,
-        a_orig=a_elegido,
-        b_orig=b_elegido,
-        raiz_im=raiz_im,
-        raiz_il=raiz_il,
-        iters_im=iters_im,
-        iters_il=iters_il
-    )
+    # =========================================================================
+    # BLOQUE 4: GRAFICA COMPARATIVA
+    # =========================================================================
+    graficar_comparacion(f, var, a_elegido, b_elegido, r_im, it_im, r_il, it_il)
 
 
 if __name__ == "__main__":
