@@ -775,6 +775,339 @@ def ejercicio_personalizado():
 
 
 # =============================================================================
+# PUNTO 1 (GUIA N° 4): METODO DE FADEEV-LEVERRIER (ENFOQUE POO)
+# =============================================================================
+
+class MatrizNumerica:
+    """
+    Clase base orientada a objetos para encapsular operaciones matriciales
+    fundamentales reutilizables en metodos numericos.
+    """
+
+    def __init__(self, datos):
+        self._matriz = np.array(datos, dtype=float)
+        if self._matriz.ndim != 2 or self._matriz.shape[0] != self._matriz.shape[1]:
+            raise ValueError("La matriz debe ser cuadrada (N x N).")
+        self._dimension = self._matriz.shape[0]
+
+    @property
+    def matriz(self):
+        return self._matriz.copy()
+
+    @property
+    def dimension(self):
+        return self._dimension
+
+    @staticmethod
+    def identidad(n):
+        """Retorna la matriz identidad de dimension n x n."""
+        return np.eye(n, dtype=float)
+
+    @staticmethod
+    def traza(M):
+        """Calcula la traza de una matriz cuadrada (suma de la diagonal principal)."""
+        return float(np.trace(M))
+
+    @staticmethod
+    def multiplicar(M1, M2):
+        """Realiza el producto matricial entre dos matrices."""
+        return np.matmul(M1, M2)
+
+    @staticmethod
+    def es_matriz_nula(M, tol=1e-9):
+        """Verifica si todos los elementos de la matriz son nulos dentro de una tolerancia."""
+        return bool(np.all(np.abs(M) <= tol))
+
+    def formatear_matriz(self, M=None, decimales=4, indent="    "):
+        """Devuelve una representacion en texto alineada de la matriz."""
+        mat = self._matriz if M is None else np.array(M, dtype=float)
+        lineas = []
+        for fila in mat:
+            valores = "  ".join(f"{ (0.0 if abs(v) < 1e-12 else v):>{decimales + 6}.{decimales}f}" for v in fila)
+            lineas.append(f"{indent}[ {valores} ]")
+        return "\n".join(lineas)
+
+
+class FadeevLeverrierSolver(MatrizNumerica):
+    """
+    Implementacion Orientada a Objetos del Metodo de Fadeev-Leverrier para:
+      1. Hallar el polinomio caracteristico det(lambda * I - A) = 0.
+      2. Validar que la matriz en el ultimo paso sea la matriz nula.
+      3. Calcular los autovalores (raices del polinomio caracteristico).
+      4. Calcular los eigenvectores asociados resolviendo (A - lambda_i * I) * v = 0.
+    """
+
+    def __init__(self, datos_matriz):
+        super().__init__(datos_matriz)
+        self.pasos_iteracion = []
+        self.coeficientes_p = []          # Coeficientes p_k tales que P(lambda) = lambda^n - p_1*lambda^(n-1) - ... - p_n
+        self.coeficientes_polinomio = []  # Coeficientes [1, -p_1, -p_2, ..., -p_n] para np.roots
+        self.es_nula_final = False
+        self.autovalores = np.array([])
+        self.eigenvectores = []
+
+    def calcular_polinomio_caracteristico(self):
+        """
+        Ejecuta las iteraciones del algoritmo de Fadeev-Leverrier:
+            A_1 = A,                 p_1 = tr(A_1),           B_1 = A_1 - p_1 * I
+            A_k = A * B_{k-1},       p_k = (1/k) * tr(A_k),   B_k = A_k - p_k * I
+        En el paso k = n, B_n (matriz residual final A_n - p_n * I) debe ser la matriz nula.
+        """
+        n = self.dimension
+        I = self.identidad(n)
+        A = self.matriz
+
+        self.pasos_iteracion = []
+        self.coeficientes_p = []
+
+        B_prev = None
+        for k in range(1, n + 1):
+            if k == 1:
+                A_k = A.copy()
+            else:
+                A_k = self.multiplicar(A, B_prev)
+
+            traza_k = self.traza(A_k)
+            p_k = traza_k / k
+            B_k = A_k - p_k * I
+
+            self.coeficientes_p.append(p_k)
+            self.pasos_iteracion.append({
+                "paso": k,
+                "A_k": A_k.copy(),
+                "traza": traza_k,
+                "p_k": p_k,
+                "c_k": -p_k,
+                "B_k": B_k.copy()
+            })
+            B_prev = B_k
+
+        # Validacion de control: la matriz resultante en el ultimo paso debe ser nula
+        matriz_final = self.pasos_iteracion[-1]["B_k"]
+        self.es_nula_final = self.es_matriz_nula(matriz_final)
+
+        # Polinomio caracteristico: det(lambda * I - A) = lambda^n - p_1*lambda^(n-1) - ... - p_n
+        self.coeficientes_polinomio = [1.0] + [-p for p in self.coeficientes_p]
+        return self.coeficientes_polinomio
+
+    def calcular_autovalores(self):
+        """
+        Obtiene las raices del polinomio caracteristico para determinar los autovalores.
+        """
+        if not self.coeficientes_polinomio:
+            self.calcular_polinomio_caracteristico()
+
+        raices = np.roots(self.coeficientes_polinomio)
+        # Limpiar parte imaginaria despreciable producto del redondeo numerico
+        raices_limpias = []
+        for r in raices:
+            if abs(r.imag) < 1e-9:
+                val = float(r.real)
+                if abs(val - round(val)) < 1e-9:
+                    val = float(round(val))
+                raices_limpias.append(val)
+            else:
+                raices_limpias.append(r)
+
+        # Ordenar de mayor a menor segun parte real
+        raices_limpias.sort(key=lambda x: (x.real if isinstance(x, complex) else x), reverse=True)
+        self.autovalores = np.array(raices_limpias)
+        return self.autovalores
+
+    @staticmethod
+    def _resolver_sistema_homogeneo(M, tol=1e-9):
+        """
+        Resuelve el sistema homogeneo M * v = 0 mediante eliminacion gaussiana
+        con pivoteo parcial (RREF) y respaldo con descomposicion en valores singulares (SVD).
+        Retorna tanto el vector normalizado (norma 2 = 1) como una version escalada legible.
+        """
+        n = M.shape[0]
+        R = M.astype(float).copy()
+
+        # Eliminacion hacia adelante con pivoteo parcial para llevar a forma escalonada reducida (RREF)
+        fila_pivote = 0
+        columnas_pivote = []
+        for col in range(n):
+            if fila_pivote >= n:
+                break
+            max_fila = fila_pivote + int(np.argmax(np.abs(R[fila_pivote:, col])))
+            if abs(R[max_fila, col]) <= tol:
+                continue
+            R[[fila_pivote, max_fila]] = R[[max_fila, fila_pivote]]
+            R[fila_pivote] = R[fila_pivote] / R[fila_pivote, col]
+            for f in range(n):
+                if f != fila_pivote and abs(R[f, col]) > tol:
+                    R[f] = R[f] - R[f, col] * R[fila_pivote]
+            columnas_pivote.append(col)
+            fila_pivote += 1
+
+        columnas_libres = [c for c in range(n) if c not in columnas_pivote]
+
+        if columnas_libres:
+            col_libre = columnas_libres[-1]
+            v = np.zeros(n, dtype=float)
+            v[col_libre] = 1.0
+            for idx_fila, col_piv in enumerate(columnas_pivote):
+                v[col_piv] = -R[idx_fila, col_libre]
+        else:
+            # Respaldo numerico mediante SVD (ultimo vector singular derecho)
+            _, _, Vt = np.linalg.svd(M)
+            v = Vt[-1, :].copy()
+
+        # Fijar signo consistente (primer componente no nulo positivo)
+        for comp in v:
+            if abs(comp) > tol:
+                if comp < 0:
+                    v = -v
+                break
+
+        norma = float(np.linalg.norm(v))
+        v_unit = v / norma if norma > tol else v.copy()
+
+        # Escalar a componentes enteras/simples cuando sea posible para facilitar lectura
+        no_nulos = [abs(x) for x in v_unit if abs(x) > 1e-6]
+        v_escalado = v_unit / min(no_nulos) if no_nulos else v_unit.copy()
+        for factor in range(1, 13):
+            candidato = v_escalado * factor
+            if np.all(np.abs(candidato - np.round(candidato)) < 1e-6):
+                v_escalado = np.round(candidato)
+                break
+
+        v_unit = np.where(np.abs(v_unit) < 1e-12, 0.0, v_unit)
+        v_escalado = np.where(np.abs(v_escalado) < 1e-12, 0.0, v_escalado)
+        return v_unit, v_escalado
+
+    def calcular_eigenvectores(self):
+        """
+        Calcula el eigenvector asociado a cada autovalor resolviendo el
+        sistema lineal homogeneo (A - lambda_i * I) * v = 0.
+        """
+        if self.autovalores.size == 0:
+            self.calcular_autovalores()
+
+        n = self.dimension
+        I = self.identidad(n)
+        A = self.matriz
+        self.eigenvectores = []
+
+        for lam in self.autovalores:
+            matriz_sistema = A - lam * I
+            v_unit, v_esc = self._resolver_sistema_homogeneo(matriz_sistema)
+            residuo = float(np.max(np.abs(self.multiplicar(matriz_sistema, v_unit))))
+            self.eigenvectores.append({
+                "autovalor": lam,
+                "matriz_sistema": matriz_sistema,
+                "vector_unitario": v_unit,
+                "vector_escalado": v_esc,
+                "residuo": residuo
+            })
+
+        return self.eigenvectores
+
+    def resolver_completo(self):
+        """Ejecuta el flujo completo del metodo y retorna un diccionario con los resultados."""
+        inicio = time.perf_counter()
+        self.calcular_polinomio_caracteristico()
+        self.calcular_autovalores()
+        self.calcular_eigenvectores()
+        tiempo = time.perf_counter() - inicio
+        return {
+            "coeficientes_polinomio": self.coeficientes_polinomio,
+            "autovalores": self.autovalores,
+            "eigenvectores": self.eigenvectores,
+            "es_nula_final": self.es_nula_final,
+            "tiempo": tiempo
+        }
+
+    def mostrar_reporte(self):
+        """Imprime por consola el desarrollo paso a paso de forma ordenada y legible."""
+        res = self.resolver_completo()
+        n = self.dimension
+
+        print("\n" + "#" * 95)
+        print("PUNTO 1 (GUIA N° 4): METODO DE FADEEV-LEVERRIER (PROGRAMACION ORIENTADA A OBJETOS)")
+        print("#" * 95)
+
+        print("\n1. MATRIZ DEL SISTEMA A (Dimension 3x3):")
+        print(self.formatear_matriz(self.matriz, decimales=4))
+
+        print("\n2. DESARROLLO PASO A PASO DEL METODO DE FADEEV-LEVERRIER:")
+        print("-" * 95)
+        for info in self.pasos_iteracion:
+            k = info["paso"]
+            print(f"\n  ---> PASO k = {k}:")
+            if k == 1:
+                print("    Matriz A_1 = A:")
+            else:
+                print(f"    Matriz A_{k} = A * B_{k-1}:")
+            print(self.formatear_matriz(info["A_k"], decimales=4, indent="      "))
+            print(f"    Traza: tr(A_{k}) = {info['traza']:.4f}")
+            print(f"    Coeficiente: p_{k} = tr(A_{k}) / {k} = {info['p_k']:.4f}   (Coeficiente en polinomio c_{k} = -p_{k} = {info['c_k']:+.4f})")
+            print(f"    Matriz auxiliar B_{k} = A_{k} - p_{k} * I:")
+            print(self.formatear_matriz(info["B_k"], decimales=4, indent="      "))
+
+        print("\n" + "-" * 95)
+        print("3. CONTROL DEL ALGORITMO (VALIDACION DE MATRIZ NULA EN EL ULTIMO PASO):")
+        estado_nula = "EXITO (La matriz final B_n = A_n - p_n*I es la MATRIZ NULA)" if self.es_nula_final else "ADVERTENCIA (No nula)"
+        print(f"   * Estado de verificacion: {estado_nula}")
+
+        print("\n4. COEFICIENTES Y POLINOMIO CARACTERISTICO det(lambda * I - A) = 0:")
+        terminos = [f"lambda^{n}"]
+        for idx, c in enumerate(self.coeficientes_polinomio[1:], start=1):
+            pot = n - idx
+            signo = "+" if c >= 0 else "-"
+            if pot > 1:
+                terminos.append(f"{signo} {abs(c):.4f}*lambda^{pot}")
+            elif pot == 1:
+                terminos.append(f"{signo} {abs(c):.4f}*lambda")
+            else:
+                terminos.append(f"{signo} {abs(c):.4f}")
+        pol_str = " ".join(terminos) + " = 0"
+        print(f"   * Coeficientes [1, c_1, c_2, c_3]: {[round(c, 6) for c in self.coeficientes_polinomio]}")
+        print(f"   * Polinomio Caracteristico: P(lambda) = {pol_str}")
+
+        print("\n5. AUTOVALORES (RAICES DEL POLINOMIO CARACTERISTICO):")
+        for i, lam in enumerate(self.autovalores, start=1):
+            print(f"   * lambda_{i} = {lam:.6f}")
+
+        print("\n6. EIGENVECTORES ASOCIADOS A CADA AUTOVALOR ((A - lambda_i * I) * v = 0):")
+        print("-" * 95)
+        for i, item in enumerate(self.eigenvectores, start=1):
+            lam = item["autovalor"]
+            v_esc = item["vector_escalado"]
+            v_unit = item["vector_unitario"]
+            residuo = item["residuo"]
+
+            print(f"\n  ---> Autovalor lambda_{i} = {lam:.4f}:")
+            print(f"    Matriz del sistema homogeneo (A - ({lam:.4f}) * I):")
+            print(self.formatear_matriz(item["matriz_sistema"], decimales=4, indent="      "))
+            esc_str = ", ".join(f"{val:.4f}" for val in v_esc)
+            unit_str = ", ".join(f"{val:.6f}" for val in v_unit)
+            print(f"    Eigenvector representativo v_{i} (escalado)  : [ {esc_str} ]^T")
+            print(f"    Eigenvector normalizado    v_{i} (||v||=1)   : [ {unit_str} ]^T")
+            print(f"    Verificacion ||(A - lambda_{i}*I)*v_{i}||_inf : {residuo:.6e}")
+
+        print("\n" + "=" * 95)
+        print(f"Tiempo de computo del Metodo de Fadeev-Leverrier: {res['tiempo']:.6f} s ({res['tiempo']*1000:.2f} ms)")
+        print("=" * 95 + "\n")
+
+
+def punto_1_fadeev_leverrier():
+    """
+    Define la matriz A del Punto 1 de la Guia de Actividades N° 4 e invoca la
+    resolucion completa mediante la clase FadeevLeverrierSolver.
+    """
+    A_punto1 = [
+        [3,  2, -1],
+        [1, -2,  3],
+        [2,  0,  4]
+    ]
+    solver = FadeevLeverrierSolver(A_punto1)
+    solver.mostrar_reporte()
+    return solver
+
+
+# =============================================================================
 # EJECUCION SECUENCIAL DE TODOS LOS EJERCICIOS DEL LABORATORIO
 # =============================================================================
 
@@ -782,6 +1115,7 @@ def ejecutar_todos():
     print("\n" + "=" * 95)
     print("EJECUTANDO TODOS LOS EJERCICIOS DE LA GUIA DE LABORATORIO N° 4 (GAUSS-SEIDEL)")
     print("=" * 95)
+    punto_1_fadeev_leverrier()
     ejercicio_1()
     ejercicio_2()
     ejercicio_3()
@@ -800,18 +1134,21 @@ def menu_principal():
         print("\n" + "=" * 95)
         print("     METODOS COMPUTACIONALES - TP N° 4: METODO ITERATIVO DE GAUSS-SEIDEL")
         print("=" * 95)
+        print("  0. Punto 1 - Metodo de Fadeev-Leverrier (POO: Polinomio, Autovalores y Eigenvectores)")
         print("  1. Ejercicio 1 (Formula alimenticia para engordar ganado - Matriz 4x4)")
         print("  2. Ejercicio 2 (Sistema 3x3 de la guia con analisis previo y x0 = [1, 1, 1])")
         print("  3. Ejercicio 3 (Sistema 3x3 con analisis de convergencia y reordenamiento)")
         print("  4. Ejercicio 4 (Produccion de componentes electronicos - Matriz 3x3)")
         print("  5. Probar Sistema Personalizado N x N (Consigna g: Variar dimensiones)")
-        print("  6. Ejecutar TODOS los ejercicios de la guia secuencialmente (1 al 4)")
+        print("  6. Ejecutar TODOS los ejercicios de la guia secuencialmente (Punto 1 y Ej. 1 al 4)")
         print("  7. Salir")
         print("=" * 95)
 
-        opcion = input("Seleccione una opcion (1-7): ").strip()
+        opcion = input("Seleccione una opcion (0-7): ").strip()
 
-        if opcion == '1':
+        if opcion == '0':
+            punto_1_fadeev_leverrier()
+        elif opcion == '1':
             ejercicio_1()
         elif opcion == '2':
             ejercicio_2()
@@ -827,7 +1164,7 @@ def menu_principal():
             print("\n¡Gracias por utilizar el programa de Metodo de Gauss-Seidel!\n")
             break
         else:
-            print("\nOpcion no valida. Por favor, ingrese un numero del 1 al 7.")
+            print("\nOpcion no valida. Por favor, ingrese un numero del 0 al 7.")
 
 
 if __name__ == "__main__":
