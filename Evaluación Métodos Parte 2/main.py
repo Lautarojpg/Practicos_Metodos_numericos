@@ -5,14 +5,15 @@ FACULTAD DE CIENCIAS EXACTAS Y NATURALES Y AGRIMENSURA (FaCENA)
 METODOS COMPUTACIONALES / CALCULO NUMERICO
 Evaluacion Metodos Parte 2 - Programa Principal (main.py)
 ===============================================================================
-Arquitectura modular y escalable preparada para integrar multiples metodos
-numericos (actualmente: Metodo Directo de Eliminacion de Gauss; preparado
-para incorporar el modulo de Interpolacion de Lagrange).
+Arquitectura modular que integra:
+  1. Metodo Directo de Eliminacion de Gauss (eliminacion_gauss.py)
+  2. Metodo de Interpolacion Polinomica de Lagrange (interpolacion_lagrange.py)
 ===============================================================================
 """
 
 import sys
 from eliminacion_gauss import EliminacionGaussSolver, SistemaLinealError
+from interpolacion_lagrange import ejecutar_modulo_lagrange
 
 # Configuracion de codificacion UTF-8 para consola en Windows/Linux
 if hasattr(sys.stdout, "reconfigure"):
@@ -23,7 +24,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 
 # =============================================================================
-# ENTRADA DINAMICA DE DATOS POR TECLADO CON GUIA VISUAL DE REFERENCIA
+# ENTRADA DINAMICA DE DATOS POR TECLADO CON GUIA VISUAL DE REFERENCIA (GAUSS)
 # =============================================================================
 
 def mostrar_guia_referencia_agronomo():
@@ -151,24 +152,24 @@ def ejecutar_modulo_gauss():
 
 
 # =============================================================================
-# MENU PRINCIPAL ESCALABLE
+# MENU PRINCIPAL INTERACTIVO
 # =============================================================================
 
 def menu_principal():
     """
-    Menu interactivo principal. Diseñado de forma modular para agregar nuevos
-    metodos numericos (como el Polinomio Interpolador de Lagrange) facilmente.
+    Menu interactivo principal que integra Eliminacion de Gauss y Polinomio de Lagrange.
     """
     while True:
         print("\n" + "=" * 90)
         print(f"{'FaCENA - UNNE | EVALUACION METODOS COMPUTACIONALES - PARTE 2':^90}")
         print("=" * 90)
-        print("  1. Resolver Sistema de Ecuaciones Lineales - Metodo de Eliminacion de Gauss")
-        print("  2. Salir")
+        print("  1. Resolver Sistema de Ecuaciones Lineales - Eliminacion de Gauss")
+        print("  2. Resolver Interpolacion - Polinomio de Lagrange")
+        print("  3. Salir")
         print("=" * 90)
 
         try:
-            opcion = input("  Seleccione una opcion (1-2): ").strip()
+            opcion = input("  Seleccione una opcion (1-3): ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n\n  Ejecucion finalizada por el usuario.")
             break
@@ -176,10 +177,12 @@ def menu_principal():
         if opcion == "1":
             ejecutar_modulo_gauss()
         elif opcion == "2":
+            ejecutar_modulo_lagrange()
+        elif opcion == "3":
             print("\n  ¡Gracias por utilizar el programa! Hasta luego.\n")
             break
         else:
-            print("\n  [!] Opcion no valida. Por favor, seleccione 1 o 2.")
+            print("\n  [!] Opcion no valida. Por favor, seleccione 1, 2 o 3.")
 
 
 if __name__ == "__main__":
