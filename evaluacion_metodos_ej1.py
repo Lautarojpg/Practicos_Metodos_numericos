@@ -224,7 +224,7 @@ def metodo_intervalo_medio(f, a, b, tol=0.001, max_iter=100):
 
 
 # =============================================================================
-# 5. METODO DE INTERPOLACION LINEAL (REGULA FALSI)
+# 5. METODO DE INTERPOLACION LINEAL
 # =============================================================================
 def metodo_interpolacion_lineal(f, a, b, tol=0.001, max_iter=100):
     fa, fb = f(a), f(b)
